@@ -1,0 +1,100 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.message-container {
+  overflow-y: auto;
+}
+
+.message-bubble {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+}
+
+.message-user {
+  background-color: #0d6efd;
+  color: white;
+  margin-left: auto;
+  max-width: 80%;
+}
+
+.message-assistant {
+  background-color: #f8f9fa;
+  color: #212529;
+  max-width: 80%;
+  border: 1px solid #dee2e6;
+}
+
+.conversation-item {
+  cursor: pointer;
+  padding: 0.75rem;
+  border-radius: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.conversation-item:hover {
+  background-color: #f8f9fa;
+}
+
+.conversation-item.active {
+  background-color: #e7f1ff;
+  border-left: 3px solid #0d6efd;
+}
+
+.markdown-content {
+  line-height: 1.6;
+}
+
+.markdown-content pre {
+  margin: 0.5rem 0;
+}
+
+.markdown-content code {
+  font-size: 0.9em;
+}
+
+.markdown-content table {
+  font-size: 0.9em;
+}
+
+.markdown-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.25rem;
+  margin: 0.5rem 0;
+}
+
+/* Ensure card footer stays at bottom */
+.card {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.card-body {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+}
+
+.card-footer {
+  flex-shrink: 0 !important;
+  margin-top: auto !important;
+}
+
