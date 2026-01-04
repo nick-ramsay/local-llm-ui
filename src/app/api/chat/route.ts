@@ -42,7 +42,10 @@ export async function POST(request: NextRequest) {
     // Update model, temperature, and stream if provided
     if (model) conversation.model = model;
     if (temperature !== undefined) conversation.temperature = temperature;
-    if (stream !== undefined) conversation.stream = stream;
+    // Always update stream if provided (can be true or false)
+    if (stream !== undefined) {
+      conversation.stream = stream === true;
+    }
 
     // Add user message
     conversation.messages.push({
@@ -66,12 +69,15 @@ export async function POST(request: NextRequest) {
       content: msg.content,
     }));
 
-    const shouldStream = conversation.stream === true;
+    // Check if streaming is enabled - use the stream parameter from request if conversation doesn't have it set
+    const shouldStream = stream === true || conversation.stream === true;
+    
+    console.log('Streaming check:', { stream, conversationStream: conversation.stream, shouldStream });
 
     // Handle streaming response
     if (shouldStream) {
       const encoder = new TextEncoder();
-      const stream = new ReadableStream({
+      const responseStream = new ReadableStream({
         async start(controller) {
           try {
             // Call Ollama API with streaming
@@ -102,10 +108,10 @@ export async function POST(request: NextRequest) {
               throw new Error('No response body from Ollama');
             }
 
-            // Add empty assistant message to conversation for real-time updates
+            // Add assistant message with placeholder content for real-time updates
             conversation.messages.push({
               role: 'assistant',
-              content: '',
+              content: '...', // Placeholder to satisfy schema requirement
               timestamp: new Date(),
             });
             await conversation.save();
@@ -172,7 +178,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      return new Response(stream, {
+      return new Response(responseStream, {
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',

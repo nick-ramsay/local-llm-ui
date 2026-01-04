@@ -28,8 +28,29 @@ export default function Home() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    loadConversations();
-    loadModels();
+    const initializeApp = async () => {
+      await loadConversations();
+      await loadModels();
+      
+      // Load last active conversation from localStorage
+      const lastActiveConversationId = localStorage.getItem('lastActiveConversationId');
+      if (lastActiveConversationId) {
+        try {
+          const conversation = await apiClient.getConversation(lastActiveConversationId);
+          if (conversation) {
+            setCurrentConversation(conversation);
+            setSelectedModel(conversation.model);
+            setTemperature(conversation.temperature);
+            setStream(conversation.stream || false);
+          }
+        } catch (err) {
+          // If conversation doesn't exist anymore, clear it from localStorage
+          localStorage.removeItem('lastActiveConversationId');
+        }
+      }
+    };
+    
+    initializeApp();
   }, []);
 
   useEffect(() => {
@@ -70,6 +91,9 @@ export default function Home() {
       setCurrentConversation(conversation);
       setSelectedModel(conversation.model);
       setTemperature(conversation.temperature);
+      setStream(conversation.stream || false);
+      // Save to localStorage
+      localStorage.setItem('lastActiveConversationId', conversationId);
     } catch (err: any) {
       setError('Failed to load conversation: ' + (err.message || 'Unknown error'));
     }
@@ -82,6 +106,8 @@ export default function Home() {
     setTemperature(0.7);
     setStream(false);
     setStreamingMessage('');
+    // Clear last active conversation when starting new one
+    localStorage.removeItem('lastActiveConversationId');
   };
 
   const handleCancel = () => {
@@ -109,6 +135,9 @@ export default function Home() {
     const userMessage = message.trim();
     const originalMessage = message; // Keep original for potential restoration
     setMessage('');
+
+    // Declare pollingInterval outside if block so it's accessible in finally
+    let pollingInterval: NodeJS.Timeout | null = null;
 
     // Add user message to UI immediately
     const tempUserMessage = {
@@ -148,34 +177,7 @@ export default function Home() {
         setCurrentConversation(tempConversation);
 
         // Set up polling to sync with database during streaming
-        let pollingInterval: NodeJS.Timeout | null = null;
         let dbConversationId: string | null = null;
-
-        const startPolling = (conversationId: string) => {
-          if (pollingInterval) {
-            clearInterval(pollingInterval);
-          }
-          dbConversationId = conversationId;
-          pollingInterval = setInterval(async () => {
-            try {
-              const dbConversation = await apiClient.getConversation(conversationId);
-              if (dbConversation) {
-                setCurrentConversation(dbConversation);
-                scrollToBottom();
-              }
-            } catch (err) {
-              // Silently fail polling errors
-              console.error('Polling error:', err);
-            }
-          }, 500); // Poll every 500ms during streaming
-        };
-
-        // Start polling if we already have a conversation ID
-        if (tempConversation._id) {
-          startPolling(tempConversation._id);
-          // Also add/update in sidebar immediately for existing conversations
-          addConversationToSidebar(tempConversation._id);
-        }
 
         // Function to add conversation to sidebar immediately
         const addConversationToSidebar = async (conversationId: string) => {
@@ -203,7 +205,34 @@ export default function Home() {
           }
         };
 
+        const startPolling = (conversationId: string) => {
+          if (pollingInterval) {
+            clearInterval(pollingInterval);
+          }
+          dbConversationId = conversationId;
+          pollingInterval = setInterval(async () => {
+            try {
+              const dbConversation = await apiClient.getConversation(conversationId);
+              if (dbConversation) {
+                setCurrentConversation(dbConversation);
+                scrollToBottom();
+              }
+            } catch (err) {
+              // Silently fail polling errors
+              console.error('Polling error:', err);
+            }
+          }, 500); // Poll every 500ms during streaming
+        };
+
+        // Start polling if we already have a conversation ID
+        if (tempConversation._id) {
+          startPolling(tempConversation._id);
+          // Also add/update in sidebar immediately for existing conversations
+          addConversationToSidebar(tempConversation._id);
+        }
+
         // Call streaming API
+        console.log('Sending streaming request:', { stream, conversationId: currentConversation?._id, message: userMessage });
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: {
@@ -214,23 +243,39 @@ export default function Home() {
             message: userMessage,
             model: selectedModel,
             temperature: temperature,
-            stream: true,
+            stream: stream,
           }),
           signal: abortController.signal,
         });
+        
+        console.log('Streaming response status:', response.status, response.ok);
 
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to send message');
+          // For streaming responses, try to get error message from response
+          let errorMessage = 'Failed to send message';
+          try {
+            // Try to read as text first for streaming responses
+            const errorText = await response.text();
+            try {
+              const errorData = JSON.parse(errorText);
+              errorMessage = errorData.error || errorMessage;
+            } catch (e) {
+              errorMessage = errorText || response.statusText || errorMessage;
+            }
+          } catch (e) {
+            errorMessage = response.statusText || errorMessage;
+          }
+          throw new Error(errorMessage);
+        }
+        
+        // Check if response is actually a stream
+        if (!response.body) {
+          throw new Error('No response body received');
         }
 
-        const reader = response.body?.getReader();
+        const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let accumulatedContent = '';
-
-        if (!reader) {
-          throw new Error('No response body');
-        }
 
         while (true) {
           // Check if request was aborted
@@ -255,6 +300,8 @@ export default function Home() {
                   startPolling(data.conversationId);
                   // Add conversation to sidebar immediately
                   addConversationToSidebar(data.conversationId);
+                  // Save to localStorage
+                  localStorage.setItem('lastActiveConversationId', data.conversationId);
                 }
 
                 if (data.content) {
@@ -284,6 +331,8 @@ export default function Home() {
                   }
                   // Streaming complete, update with final conversation from database
                   setCurrentConversation(data.conversation);
+                  // Save to localStorage
+                  localStorage.setItem('lastActiveConversationId', data.conversation._id);
                   // Update sidebar with final conversation
                   setConversations(prev => {
                     const exists = prev.some(conv => conv._id === data.conversation._id);
@@ -301,7 +350,23 @@ export default function Home() {
                   break;
                 }
                 if (data.error) {
-                  throw new Error(data.error);
+                  // Stop polling on error
+                  if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                  }
+                  setError(data.error);
+                  setLoading(false);
+                  setStreamingMessage('');
+                  // Remove temporary messages on error
+                  if (tempConversation) {
+                    const originalMessages = currentConversation?.messages || [];
+                    setCurrentConversation(currentConversation ? {
+                      ...currentConversation,
+                      messages: originalMessages,
+                    } : null);
+                  }
+                  break;
                 }
               } catch (e) {
                 // Skip invalid JSON
@@ -373,6 +438,8 @@ export default function Home() {
 
         const result = await response.json();
         setCurrentConversation(result.conversation);
+        // Save to localStorage
+        localStorage.setItem('lastActiveConversationId', result.conversation._id);
 
         // Add/update conversation in sidebar immediately
         setConversations(prev => {
@@ -410,6 +477,11 @@ export default function Home() {
     if (window.confirm('Are you sure you want to delete this conversation?')) {
       try {
         await apiClient.deleteConversation(conversationId);
+        // Clear from localStorage if it was the last active conversation
+        const lastActiveId = localStorage.getItem('lastActiveConversationId');
+        if (lastActiveId === conversationId) {
+          localStorage.removeItem('lastActiveConversationId');
+        }
         if (currentConversation?._id === conversationId) {
           handleNewConversation();
         }
@@ -430,6 +502,20 @@ export default function Home() {
         stream: stream,
       });
       setCurrentConversation(updated);
+      
+      // Update the conversation in the sidebar list
+      setConversations(prev => {
+        const exists = prev.some(conv => conv._id === updated._id);
+        if (exists) {
+          return prev.map(conv => 
+            conv._id === updated._id ? updated : conv
+          ).sort((a, b) => 
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
+        } else {
+          return [updated, ...prev];
+        }
+      });
     } catch (err: any) {
       setError('Failed to update settings: ' + (err.message || 'Unknown error'));
     }

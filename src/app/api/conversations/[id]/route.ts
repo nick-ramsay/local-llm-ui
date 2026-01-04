@@ -42,7 +42,10 @@ export async function PUT(
     if (title !== undefined) updateData.title = title;
     if (model !== undefined) updateData.model = model;
     if (temperature !== undefined) updateData.temperature = temperature;
-    if (stream !== undefined) updateData.stream = stream;
+    // Handle stream explicitly - it can be true or false, so check for undefined/null
+    if (typeof stream === 'boolean') {
+      updateData.stream = stream;
+    }
 
     const conversation = await Conversation.findByIdAndUpdate(
       id,
