@@ -49,15 +49,15 @@ code {
   margin-bottom: 0.5rem;
 }
 
-.conversation-item:hover {
-  background-color: #f8f9fa;
-}
-
 .conversation-item.active {
-  background-color: #e7f1ff;
-  border-left: 3px solid #0d6efd;
+  background-color: white;
+  border: 2px solid #0d6efd;
+  color: black;
 }
 
+.list-group-item+.list-group-item.active {
+  border-top-width: 2px;
+}
 .markdown-content {
   line-height: 1.6;
 }

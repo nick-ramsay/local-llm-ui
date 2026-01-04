@@ -1,11 +1,16 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import HighlightOffIcon from '@mui/icons-material/HighlightOff';
+import SendIcon from '@mui/icons-material/Send';
 import { Container, Row, Col, Card, Form, Button, ListGroup, Badge, Spinner, Alert } from 'react-bootstrap';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { apiClient, Conversation, Message, Model } from './utils/api';
 import './globals.css';
+import { inherits } from 'util';
+import { BorderAll } from '@mui/icons-material';
 
 export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -126,26 +131,26 @@ export default function Home() {
         // Update conversation with user message and empty assistant message
         tempConversation = currentConversation
           ? {
-              ...currentConversation,
-              messages: [...currentConversation.messages, tempUserMessage, tempAssistantMessage],
-            }
+            ...currentConversation,
+            messages: [...currentConversation.messages, tempUserMessage, tempAssistantMessage],
+          }
           : {
-              _id: '',
-              title: userMessage.substring(0, 50) || 'New Conversation',
-              model: selectedModel,
-              temperature: temperature,
-              stream: stream,
-              messages: [tempUserMessage, tempAssistantMessage],
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            };
+            _id: '',
+            title: userMessage.substring(0, 50) || 'New Conversation',
+            model: selectedModel,
+            temperature: temperature,
+            stream: stream,
+            messages: [tempUserMessage, tempAssistantMessage],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
 
         setCurrentConversation(tempConversation);
 
         // Set up polling to sync with database during streaming
         let pollingInterval: NodeJS.Timeout | null = null;
         let dbConversationId: string | null = null;
-        
+
         const startPolling = (conversationId: string) => {
           if (pollingInterval) {
             clearInterval(pollingInterval);
@@ -164,14 +169,14 @@ export default function Home() {
             }
           }, 500); // Poll every 500ms during streaming
         };
-        
+
         // Start polling if we already have a conversation ID
         if (tempConversation._id) {
           startPolling(tempConversation._id);
           // Also add/update in sidebar immediately for existing conversations
           addConversationToSidebar(tempConversation._id);
         }
-        
+
         // Function to add conversation to sidebar immediately
         const addConversationToSidebar = async (conversationId: string) => {
           try {
@@ -182,9 +187,9 @@ export default function Home() {
                 const exists = prev.some(conv => conv._id === conversationId);
                 if (exists) {
                   // Update existing conversation
-                  return prev.map(conv => 
+                  return prev.map(conv =>
                     conv._id === conversationId ? dbConversation : conv
-                  ).sort((a, b) => 
+                  ).sort((a, b) =>
                     new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
                   );
                 } else {
@@ -244,19 +249,19 @@ export default function Home() {
             if (line.startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.slice(6));
-                
+
                 // Start polling and add to sidebar when we receive the conversation ID
                 if (data.conversationId && !dbConversationId) {
                   startPolling(data.conversationId);
                   // Add conversation to sidebar immediately
                   addConversationToSidebar(data.conversationId);
                 }
-                
+
                 if (data.content) {
                   accumulatedContent += data.content;
                   // Update the streaming message in real-time
                   setStreamingMessage(accumulatedContent);
-                  
+
                   // Update conversation with accumulated content (polling will also update from DB)
                   const updatedMessages = [...(tempConversation.messages || [])];
                   if (updatedMessages.length > 0) {
@@ -283,9 +288,9 @@ export default function Home() {
                   setConversations(prev => {
                     const exists = prev.some(conv => conv._id === data.conversation._id);
                     if (exists) {
-                      return prev.map(conv => 
+                      return prev.map(conv =>
                         conv._id === data.conversation._id ? data.conversation : conv
-                      ).sort((a, b) => 
+                      ).sort((a, b) =>
                         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
                       );
                     } else {
@@ -311,7 +316,7 @@ export default function Home() {
           clearInterval(pollingInterval);
           pollingInterval = null;
         }
-        
+
         // Don't show error if request was aborted
         if (err.name === 'AbortError' || abortController.signal.aborted) {
           // Remove the temporary messages on cancellation
@@ -368,14 +373,14 @@ export default function Home() {
 
         const result = await response.json();
         setCurrentConversation(result.conversation);
-        
+
         // Add/update conversation in sidebar immediately
         setConversations(prev => {
           const exists = prev.some(conv => conv._id === result.conversation._id);
           if (exists) {
-            return prev.map(conv => 
+            return prev.map(conv =>
               conv._id === result.conversation._id ? result.conversation : conv
-            ).sort((a, b) => 
+            ).sort((a, b) =>
               new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
             );
           } else {
@@ -437,8 +442,8 @@ export default function Home() {
         <Col md={3} className="border-end p-3 bg-light" style={{ overflowY: 'auto', maxHeight: '100vh' }}>
           <div className="d-flex justify-content-between align-items-center mb-3">
             <h4>Conversations</h4>
-            <Button variant="primary" size="sm" onClick={handleNewConversation}>
-              New Chat
+            <Button style={{ backgroundColor: 'transparent', border: 'none' }} size="sm" onClick={handleNewConversation}>
+              <AddCircleOutlineIcon style={{ "color": "black" }} />
             </Button>
           </div>
           <ListGroup>
@@ -553,9 +558,8 @@ export default function Home() {
               {currentConversation?.messages.map((msg: Message, index: number) => (
                 <div
                   key={index}
-                  className={`message-bubble ${
-                    msg.role === 'user' ? 'message-user' : 'message-assistant'
-                  }`}
+                  className={`message-bubble ${msg.role === 'user' ? 'message-user' : 'message-assistant'
+                    }`}
                 >
                   <div className="fw-bold mb-2">
                     {msg.role === 'user' ? 'You' : 'Assistant'}
@@ -654,7 +658,7 @@ export default function Home() {
                           variant="danger"
                           onClick={handleCancel}
                         >
-                          Cancel
+                          <HighlightOffIcon />
                         </Button>
                       )}
                       <Button
@@ -675,7 +679,7 @@ export default function Home() {
                             Sending...
                           </>
                         ) : (
-                          'Submit'
+                          <SendIcon />
                         )}
                       </Button>
                     </div>
