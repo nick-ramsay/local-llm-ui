@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import HighlightOffIcon from '@mui/icons-material/HighlightOff';
+import SaveIcon from '@mui/icons-material/Save';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import SendIcon from '@mui/icons-material/Send';
 import { Container, Row, Col, Card, Form, Button, ListGroup, Badge, Spinner, Alert } from 'react-bootstrap';
 import ReactMarkdown from 'react-markdown';
@@ -18,20 +20,22 @@ export default function Home() {
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('gemma3:12b');
   const [temperature, setTemperature] = useState<number>(0.7);
-  const [stream, setStream] = useState<boolean>(false);
+  const [stream, setStream] = useState<boolean>(true);
   const [message, setMessage] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingModels, setLoadingModels] = useState<boolean>(true);
   const [streamingMessage, setStreamingMessage] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const userScrolledUpRef = useRef<boolean>(false);
 
   useEffect(() => {
     const initializeApp = async () => {
       await loadConversations();
       await loadModels();
-      
+
       // Load last active conversation from localStorage
       const lastActiveConversationId = localStorage.getItem('lastActiveConversationId');
       if (lastActiveConversationId) {
@@ -49,17 +53,35 @@ export default function Home() {
         }
       }
     };
-    
+
     initializeApp();
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
+    if (!userScrolledUpRef.current) {
+      scrollToBottom();
+    }
   }, [currentConversation?.messages, streamingMessage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const handleMessagesScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    // Check if user is near the bottom (within 100px)
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    userScrolledUpRef.current = !isNearBottom;
+  };
+
+  // Reset scroll tracking when conversation changes or streaming ends
+  useEffect(() => {
+    if (!streamingMessage) {
+      userScrolledUpRef.current = false;
+    }
+  }, [currentConversation?._id, streamingMessage]);
 
   const loadConversations = async () => {
     try {
@@ -104,7 +126,7 @@ export default function Home() {
     setMessage('');
     setSelectedModel(models.length > 0 ? models[0].name : 'gemma3:12b');
     setTemperature(0.7);
-    setStream(false);
+    setStream(true);
     setStreamingMessage('');
     // Clear last active conversation when starting new one
     localStorage.removeItem('lastActiveConversationId');
@@ -215,7 +237,6 @@ export default function Home() {
               const dbConversation = await apiClient.getConversation(conversationId);
               if (dbConversation) {
                 setCurrentConversation(dbConversation);
-                scrollToBottom();
               }
             } catch (err) {
               // Silently fail polling errors
@@ -247,7 +268,7 @@ export default function Home() {
           }),
           signal: abortController.signal,
         });
-        
+
         console.log('Streaming response status:', response.status, response.ok);
 
         if (!response.ok) {
@@ -267,7 +288,7 @@ export default function Home() {
           }
           throw new Error(errorMessage);
         }
-        
+
         // Check if response is actually a stream
         if (!response.body) {
           throw new Error('No response body received');
@@ -298,6 +319,8 @@ export default function Home() {
                 // Start polling and add to sidebar when we receive the conversation ID
                 if (data.conversationId && !dbConversationId) {
                   startPolling(data.conversationId);
+                  // Update tempConversation with the real ID to prevent active state flashing
+                  tempConversation = { ...tempConversation, _id: data.conversationId };
                   // Add conversation to sidebar immediately
                   addConversationToSidebar(data.conversationId);
                   // Save to localStorage
@@ -305,6 +328,10 @@ export default function Home() {
                 }
 
                 if (data.content) {
+                  // Hide loading spinner once first content arrives
+                  if (accumulatedContent === '') {
+                    setLoading(false);
+                  }
                   accumulatedContent += data.content;
                   // Update the streaming message in real-time
                   setStreamingMessage(accumulatedContent);
@@ -321,7 +348,6 @@ export default function Home() {
                     ...tempConversation,
                     messages: updatedMessages,
                   });
-                  scrollToBottom();
                 }
                 if (data.done && data.conversation) {
                   // Stop polling
@@ -502,14 +528,14 @@ export default function Home() {
         stream: stream,
       });
       setCurrentConversation(updated);
-      
+
       // Update the conversation in the sidebar list
       setConversations(prev => {
         const exists = prev.some(conv => conv._id === updated._id);
         if (exists) {
-          return prev.map(conv => 
+          return prev.map(conv =>
             conv._id === updated._id ? updated : conv
-          ).sort((a, b) => 
+          ).sort((a, b) =>
             new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
           );
         } else {
@@ -527,17 +553,20 @@ export default function Home() {
         {/* Sidebar - Conversations */}
         <Col md={3} className="border-end p-3 bg-light" style={{ overflowY: 'auto', maxHeight: '100vh' }}>
           <div className="d-flex justify-content-between align-items-center mb-3">
-            <h4>Conversations</h4>
-            <Button style={{ backgroundColor: 'transparent', border: 'none' }} size="sm" onClick={handleNewConversation}>
-              <AddCircleOutlineIcon style={{ "color": "black" }} />
-            </Button>
+            <h4 className='align-middle'>Conversations</h4>
+            {conversations.length > 0 && (
+              <Button style={{ backgroundColor: 'transparent', border: 'none' }} size="sm" onClick={handleNewConversation} disabled={loading}>
+                <AddCircleOutlineIcon style={{ color: loading ? 'gray' : 'black' }} />
+              </Button>
+            )}
           </div>
           <ListGroup>
             {conversations.map((conv) => (
               <ListGroup.Item
                 key={conv._id}
                 className={`conversation-item ${currentConversation?._id === conv._id ? 'active' : ''}`}
-                onClick={() => handleConversationSelect(conv._id)}
+                onClick={() => !loading && handleConversationSelect(conv._id)}
+                style={{ cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
               >
                 <div className="d-flex justify-content-between align-items-start">
                   <div className="flex-grow-1">
@@ -553,10 +582,12 @@ export default function Home() {
                   <Button
                     variant="link"
                     size="sm"
-                    className="text-danger p-0 ms-2"
+                    className="p-0 ms-2"
+                    style={{ color: loading ? 'gray' : '#dc3545' }}
                     onClick={(e) => handleDeleteConversation(conv._id, e)}
+                    disabled={loading}
                   >
-                    ×
+                    <DeleteOutlineIcon />
                   </Button>
                 </div>
               </ListGroup.Item>
@@ -569,8 +600,16 @@ export default function Home() {
           <Card className="d-flex flex-column m-0 h-100" style={{ minHeight: 0, height: '100%', borderRadius: 0, display: 'flex', flexDirection: 'column' }}>
             <Card.Header className="flex-shrink-0" style={{ flexShrink: 0 }}>
               <Row className="align-items-center">
-                <Col>
-                  <h5 className="mb-0">
+                <Col style={{ minWidth: 0 }}>
+                  <h5
+                    className="mb-0"
+                    style={{
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                    title={currentConversation ? currentConversation.title : 'New Conversation'}
+                  >
                     {currentConversation ? currentConversation.title : 'New Conversation'}
                   </h5>
                 </Col>
@@ -616,11 +655,11 @@ export default function Home() {
                     />
                     {currentConversation && (
                       <Button
-                        variant="outline-secondary"
+                        style={{ backgroundColor: 'transparent', border: 'none', color: 'black' }}
                         size="sm"
                         onClick={handleUpdateSettings}
                       >
-                        Update
+                        <SaveIcon />
                       </Button>
                     )}
                   </div>
@@ -628,7 +667,12 @@ export default function Home() {
               </Row>
             </Card.Header>
 
-            <Card.Body className="message-container" style={{ overflowY: 'auto', flex: '1 1 0', minHeight: 0, maxHeight: '100%' }}>
+            <Card.Body
+              ref={messagesContainerRef}
+              onScroll={handleMessagesScroll}
+              className="message-container"
+              style={{ overflowY: 'auto', flex: '1 1 0', minHeight: 0, maxHeight: '100%' }}
+            >
               {error && (
                 <Alert variant="danger" dismissible onClose={() => setError(null)}>
                   {error}
@@ -651,55 +695,62 @@ export default function Home() {
                     {msg.role === 'user' ? 'You' : 'Assistant'}
                   </div>
                   {msg.role === 'assistant' ? (
-                    <div className="markdown-content">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          // Style code blocks
-                          code: ({ node, inline, className, children, ...props }: any) => {
-                            const match = /language-(\w+)/.exec(className || '');
-                            return !inline && match ? (
-                              <pre className="bg-dark text-light p-3 rounded mb-2" style={{ overflowX: 'auto' }}>
-                                <code className={className} {...props}>
+                    <>
+                      <div className="markdown-content">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            // Style code blocks
+                            code: ({ node, inline, className, children, ...props }: any) => {
+                              const match = /language-(\w+)/.exec(className || '');
+                              return !inline && match ? (
+                                <pre className="bg-dark text-light p-3 rounded mb-2" style={{ overflowX: 'auto' }}>
+                                  <code className={className} {...props}>
+                                    {children}
+                                  </code>
+                                </pre>
+                              ) : (
+                                <code className="bg-light px-1 rounded" {...props}>
                                   {children}
                                 </code>
-                              </pre>
-                            ) : (
-                              <code className="bg-light px-1 rounded" {...props}>
-                                {children}
-                              </code>
-                            );
-                          },
-                          // Style paragraphs
-                          p: ({ node, ...props }: any) => <p className="mb-2" {...props} />,
-                          // Style headings
-                          h1: ({ node, ...props }: any) => <h1 className="h4 mb-2 mt-3" {...props} />,
-                          h2: ({ node, ...props }: any) => <h2 className="h5 mb-2 mt-3" {...props} />,
-                          h3: ({ node, ...props }: any) => <h3 className="h6 mb-2 mt-3" {...props} />,
-                          // Style lists
-                          ul: ({ node, ...props }: any) => <ul className="mb-2 ps-3" {...props} />,
-                          ol: ({ node, ...props }: any) => <ol className="mb-2 ps-3" {...props} />,
-                          li: ({ node, ...props }: any) => <li className="mb-1" {...props} />,
-                          // Style blockquotes
-                          blockquote: ({ node, ...props }: any) => (
-                            <blockquote className="border-start border-3 border-secondary ps-3 py-2 mb-2 bg-light" {...props} />
-                          ),
-                          // Style links
-                          a: ({ node, ...props }: any) => <a className="text-primary" target="_blank" rel="noopener noreferrer" {...props} />,
-                          // Style tables
-                          table: ({ node, ...props }: any) => (
-                            <div className="table-responsive mb-2">
-                              <table className="table table-bordered table-sm" {...props} />
-                            </div>
-                          ),
-                          thead: ({ node, ...props }: any) => <thead className="table-light" {...props} />,
-                          // Style horizontal rules
-                          hr: ({ node, ...props }: any) => <hr className="my-3" {...props} />,
-                        }}
-                      >
-                        {msg.content}
-                      </ReactMarkdown>
-                    </div>
+                              );
+                            },
+                            // Style paragraphs
+                            p: ({ node, ...props }: any) => <p className="mb-2" {...props} />,
+                            // Style headings
+                            h1: ({ node, ...props }: any) => <h1 className="h4 mb-2 mt-3" {...props} />,
+                            h2: ({ node, ...props }: any) => <h2 className="h5 mb-2 mt-3" {...props} />,
+                            h3: ({ node, ...props }: any) => <h3 className="h6 mb-2 mt-3" {...props} />,
+                            // Style lists
+                            ul: ({ node, ...props }: any) => <ul className="mb-2 ps-3" {...props} />,
+                            ol: ({ node, ...props }: any) => <ol className="mb-2 ps-3" {...props} />,
+                            li: ({ node, ...props }: any) => <li className="mb-1" {...props} />,
+                            // Style blockquotes
+                            blockquote: ({ node, ...props }: any) => (
+                              <blockquote className="border-start border-3 border-secondary ps-3 py-2 mb-2 bg-light" {...props} />
+                            ),
+                            // Style links
+                            a: ({ node, ...props }: any) => <a className="text-primary" target="_blank" rel="noopener noreferrer" {...props} />,
+                            // Style tables
+                            table: ({ node, ...props }: any) => (
+                              <div className="table-responsive mb-2">
+                                <table className="table table-bordered table-sm" {...props} />
+                              </div>
+                            ),
+                            thead: ({ node, ...props }: any) => <thead className="table-light" {...props} />,
+                            // Style horizontal rules
+                            hr: ({ node, ...props }: any) => <hr className="my-3" {...props} />,
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
+                      {msg.model && !(index === (currentConversation?.messages.length ?? 0) - 1 && streamingMessage) && (
+                        <div className="text-muted mt-2 pt-2" style={{ fontSize: '0.75rem', borderTop: '1px solid #e9ecef' }}>
+                          {msg.model} · T: {msg.temperature}
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
                   )}

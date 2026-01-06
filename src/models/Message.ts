@@ -4,6 +4,8 @@ export interface IMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  model?: string;
+  temperature?: number;
 }
 
 export const MessageSchema = new Schema<IMessage>({
@@ -19,6 +21,14 @@ export const MessageSchema = new Schema<IMessage>({
   timestamp: {
     type: Date,
     default: Date.now,
+  },
+  model: {
+    type: String,
+    required: false,
+  },
+  temperature: {
+    type: Number,
+    required: false,
   },
 });
 

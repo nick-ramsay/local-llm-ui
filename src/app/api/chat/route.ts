@@ -113,6 +113,8 @@ export async function POST(request: NextRequest) {
               role: 'assistant',
               content: '...', // Placeholder to satisfy schema requirement
               timestamp: new Date(),
+              model: conversation.model,
+              temperature: conversation.temperature,
             });
             await conversation.save();
             const assistantMessageIndex = conversation.messages.length - 1;
@@ -216,6 +218,8 @@ export async function POST(request: NextRequest) {
       role: 'assistant',
       content: assistantMessage,
       timestamp: new Date(),
+      model: updatedConversation.model,
+      temperature: updatedConversation.temperature,
     });
 
     await updatedConversation.save();
