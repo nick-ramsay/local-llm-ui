@@ -6,6 +6,8 @@ import HighlightOffIcon from '@mui/icons-material/HighlightOff';
 import SaveIcon from '@mui/icons-material/Save';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import SendIcon from '@mui/icons-material/Send';
+import SettingsIcon from '@mui/icons-material/Settings';
+import Link from 'next/link';
 import { Container, Row, Col, Card, Form, Button, ListGroup, Badge, Spinner, Alert } from 'react-bootstrap';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -26,15 +28,32 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [loadingModels, setLoadingModels] = useState<boolean>(true);
   const [streamingMessage, setStreamingMessage] = useState<string>('');
+  const [systemPrompt, setSystemPrompt] = useState<string>('');
+  const [systemPromptEnabled, setSystemPromptEnabled] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const userScrolledUpRef = useRef<boolean>(false);
 
+  // Load system settings from localStorage
+  const loadSystemSettings = () => {
+    const storedSettings = localStorage.getItem('llmSettings');
+    if (storedSettings) {
+      try {
+        const parsed = JSON.parse(storedSettings);
+        setSystemPrompt(parsed.systemPrompt || '');
+        setSystemPromptEnabled(parsed.systemPromptEnabled === true);
+      } catch (e) {
+        console.error('Failed to parse settings:', e);
+      }
+    }
+  };
+
   useEffect(() => {
     const initializeApp = async () => {
       await loadConversations();
       await loadModels();
+      loadSystemSettings();
 
       // Load last active conversation from localStorage
       const lastActiveConversationId = localStorage.getItem('lastActiveConversationId');
@@ -55,6 +74,15 @@ export default function Home() {
     };
 
     initializeApp();
+
+    // Listen for storage changes (in case settings are updated in another tab)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'llmSettings') {
+        loadSystemSettings();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   useEffect(() => {
@@ -265,6 +293,7 @@ export default function Home() {
             model: selectedModel,
             temperature: temperature,
             stream: stream,
+            systemPrompt: systemPromptEnabled ? systemPrompt : '',
           }),
           signal: abortController.signal,
         });
@@ -453,6 +482,7 @@ export default function Home() {
             model: selectedModel,
             temperature: temperature,
             stream: false,
+            systemPrompt: systemPromptEnabled ? systemPrompt : '',
           }),
           signal: abortController.signal,
         });
@@ -615,6 +645,15 @@ export default function Home() {
                 </Col>
                 <Col xs="auto">
                   <div className="d-flex gap-2 align-items-center">
+                    <Link href="/settings" style={{ color: 'inherit', textDecoration: 'none' }}>
+                      <Button
+                        style={{ backgroundColor: 'transparent', border: 'none', color: 'black' }}
+                        size="sm"
+                        title="Settings"
+                      >
+                        <SettingsIcon />
+                      </Button>
+                    </Link>
                     <Form.Select
                       size="sm"
                       value={selectedModel}

@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
-    const { conversationId, message, model, temperature, stream } = body;
+    const { conversationId, message, model, temperature, stream, systemPrompt } = body;
 
     if (!message) {
       return NextResponse.json(
@@ -64,10 +64,23 @@ export async function POST(request: NextRequest) {
     const savedConversationId = conversation._id.toString();
 
     // Prepare messages for Ollama (convert to the format Ollama expects)
-    const ollamaMessages = conversation.messages.map((msg: any) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
+    const ollamaMessages: { role: string; content: string }[] = [];
+    
+    // Add system message if provided and not empty
+    if (systemPrompt && systemPrompt.trim() !== '') {
+      ollamaMessages.push({
+        role: 'system',
+        content: systemPrompt.trim(),
+      });
+    }
+    
+    // Add conversation messages
+    conversation.messages.forEach((msg: any) => {
+      ollamaMessages.push({
+        role: msg.role,
+        content: msg.content,
+      });
+    });
 
     // Check if streaming is enabled - use the stream parameter from request if conversation doesn't have it set
     const shouldStream = stream === true || conversation.stream === true;
